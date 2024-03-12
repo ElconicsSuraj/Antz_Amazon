@@ -1,0 +1,74 @@
+#include <esp_now.h>
+#include <WiFi.h>
+
+// REPLACE WITH YOUR ESP RECEIVER'S MAC ADDRESS
+uint8_t broadcastAddress1[] = {0x24, 0xDC, 0xC3, 0x9C, 0x30, 0x08}; // nODE 1 24:dc:c3:9c:30:08
+uint8_t broadcastAddress2[] = {0x24,0XDC ,0XC3 ,0X9B, 0X9E,0XC0 }; // Node 2 24:dc:c3:9b:9e:c0
+
+//uint8_t broadcastAddress3[] = {0xFF, , , , , };
+
+typedef struct payload_struct {
+  int x; // X have Touch data 
+  int y; // Y has Pir sensor data
+} payload_struct;
+
+payload_struct Data;
+
+esp_now_peer_info_t peerInfo;
+
+// callback when data is sent
+void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
+  char macStr[18];
+  Serial.print("Packet to: ");
+  // Copies the sender mac address to a string
+  snprintf(macStr, sizeof(macStr), "%02x:%02x:%02x:%02x:%02x:%02x",
+           mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3], mac_addr[4], mac_addr[5]);
+  Serial.print(macStr);
+  Serial.print(" send status:\t");
+  Serial.println(status == ESP_NOW_SEND_SUCCESS ? "Delivery Success" : "Delivery Fail");
+}
+ 
+void setup() {
+  Serial.begin(115200);
+ 
+  WiFi.mode(WIFI_STA);
+ 
+  if (esp_now_init() != ESP_OK) {
+    Serial.println("Error initializing ESP-NOW");
+    return;
+  }
+  
+  esp_now_register_send_cb(OnDataSent);
+   
+  // register peer
+  peerInfo.channel = 0;  
+  peerInfo.encrypt = false;
+  // register first peer  
+  memcpy(peerInfo.peer_addr, broadcastAddress1, 6);
+  if (esp_now_add_peer(&peerInfo) != ESP_OK){
+    Serial.println("Failed to add peer");
+    return;
+  }
+  // register second peer  
+  memcpy(peerInfo.peer_addr, broadcastAddress2, 6);
+  if (esp_now_add_peer(&peerInfo) != ESP_OK){
+    Serial.println("Failed to add peer");
+    return;
+  }
+
+}
+ 
+void loop() {
+  Data.x = random(10,12); // Touch data will pass if data is 11 it will activate the system if data is 22 it deactivate the system
+  Data.y = random(0,20); // PIR data will pass if data is 11 it will activate the system if data is 22 it deactivate the system
+  
+  esp_err_t result = esp_now_send(0, (uint8_t *) &Data, sizeof(payload_struct));
+   
+  if (result == ESP_OK) {
+    Serial.println("Sent with success");
+  }
+  else {
+    Serial.println("Error sending the data");
+  }
+  delay(2000);
+}
