@@ -1,0 +1,122 @@
+#include <esp_now.h>
+#include <WiFi.h>
+
+// REPLACE WITH YOUR ESP RECEIVER'S MAC ADDRESS
+uint8_t broadcastAddress1[] = {0x24, 0xDC, 0xC3, 0x9C, 0x30, 0x08}; // NODE 1 24:dc:c3:9c:30:08
+uint8_t broadcastAddress2[] = {0x24, 0xDC, 0xC3, 0x9B, 0x9E, 0xC0}; // Node 2 24:dc:c3:9b:9e:c0
+#define BUTTON_PIN 13  // GIOP21 pin connected to button
+bool button_state();
+// Variables will change:
+int lastState = LOW;  // the previous state from the input pin
+int currentState;     // the current reading from the input pin
+int sensor = 14; // the pin that the sensor is attached to
+int state = LOW; // by default, no motion detected
+int val = 0;     // variable to store the sensor status (value)
+unsigned long lastDebounceTime = 0;  // the last time the button was pressed or released
+unsigned long debounceDelay = 50;    // the debounce time; increase if the output flickers
+
+typedef struct payload_struct {
+  int x; // X has Touch data
+  int y; // Y has PIR sensor data
+} payload_struct;
+
+payload_struct Data;
+
+esp_now_peer_info_t peerInfo;
+
+// callback when data is sent
+void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
+  char macStr[18];
+  Serial.print("Packet to: ");
+  // Copies the sender MAC address to a string
+  snprintf(macStr, sizeof(macStr), "%02x:%02x:%02x:%02x:%02x:%02x",
+           mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3], mac_addr[4], mac_addr[5]);
+  Serial.print(macStr);
+  Serial.print(" send status:\t");
+  Serial.println(status == ESP_NOW_SEND_SUCCESS ? "Delivery Success" : "Delivery Fail");
+  volatile bool human_detect();
+}
+
+void setup() {
+  Serial.begin(115200);
+  pinMode(sensor, INPUT);    // initialize sensor as an input
+  pinMode(BUTTON_PIN, INPUT_PULLUP);
+  WiFi.mode(WIFI_STA);
+
+  if (esp_now_init() != ESP_OK) {
+    Serial.println("Error initializing ESP-NOW");
+    return;
+  }
+
+  esp_now_register_send_cb(OnDataSent);
+
+  // register peers
+  peerInfo.channel = 0;
+  peerInfo.encrypt = false;
+  // register first peer
+  memcpy(peerInfo.peer_addr, broadcastAddress1, 6);
+  if (esp_now_add_peer(&peerInfo) != ESP_OK) {
+    Serial.println("Failed to add peer");
+    return;
+  }
+  // register second peer
+  memcpy(peerInfo.peer_addr, broadcastAddress2, 6);
+  if (esp_now_add_peer(&peerInfo) != ESP_OK) {
+    Serial.println("Failed to add peer");
+    return;
+  }
+}
+
+void loop() {
+  Data.x = human_detect();          // Touch data will pass if data is 11 it will activate the system if data is 22 it will deactivate the system
+  Data.y = button_state();    // Debounced PIR data
+
+  esp_err_t result = esp_now_send(0, (uint8_t *)&Data, sizeof(payload_struct));
+
+  if (result == ESP_OK) {
+    Serial.println("Sent with success");
+  } else {
+    Serial.println("Error sending the data");
+  }
+
+  delay(200);
+}
+
+volatile bool human_detect() {
+  val = digitalRead(sensor); // read sensor value
+  if (val == HIGH) {         // check if the sensor is HIGH
+    delay(100);              // delay 100 milliseconds
+    if (state == LOW) {
+      Serial.println("Motion detected!");
+      state = HIGH; // update variable state to HIGH
+    }
+  } else {
+    if (state == HIGH) {
+      Serial.println("Motion stopped!");
+      state = LOW; // update variable state to LOW
+    }
+  }
+  return state;
+}
+
+
+
+bool button_state()
+{
+    // read the state of the switch/button:
+  currentState = digitalRead(BUTTON_PIN);
+  Serial.println(currentState);
+
+  if (lastState == HIGH && currentState == LOW)
+    Serial.println("The button is pressed");
+  else if (lastState == LOW && currentState == HIGH)
+    Serial.println("The button is released");
+
+  // save the the last state
+  lastState = currentState;
+  return currentState;
+  
+  
+  
+  
+  }
